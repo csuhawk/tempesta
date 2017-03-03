@@ -1,7 +1,7 @@
 /**
  *		Tempesta FW
  *
- * HTTP/2 Huffman encoders and decoders.
+ * HPACK static and dynamic tables for header fields.
  *
  * Copyright (C) 2017 Tempesta Technologies, Inc.
  *
@@ -20,29 +20,24 @@
  * Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef HPACK_HUFFMAN_H
-#define HPACK_HUFFMAN_H
+#ifndef HPACK_INDEX_H
+#define HPACK_INDEX_H
 
 #include "common.h"
+#include "../str.h"
 #include "errors.h"
 #include "buffers.h"
+#include "hpack.h"
 
-fast
-http2_huffman_decode (const char * __restrict source,
-			    char * __restrict dst,
-			    uwide	      n);
+ufast
+hpack_add (HPack  * __restrict hp,
+	   TfwStr * __restrict name,
+	   TfwStr * __restrict value);
 
-fast
-http2_huffman_decode_fragments (HTTP2Input  * __restrict source,
-				HTTP2Output * __restrict destination);
+ufast
+hpack_add_index (HPack	* __restrict hp,
+		 ufast		     index,
+		 TfwStr * __restrict value);
 
-uwide
-http2_huffman_encode (const char * __restrict source,
-			    char * __restrict dst,
-			    uwide	      n);
-
-uwide
-http2_huffman_encode_length (const char * __restrict source,
-				   uwide	     n);
 
 #endif

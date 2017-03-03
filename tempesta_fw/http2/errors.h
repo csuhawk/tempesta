@@ -1,7 +1,7 @@
-/**
+﻿/**
  *		Tempesta FW
  *
- * HTTP/2 Huffman encoders and decoders.
+ * Conversion between little and big endian numbers.
  *
  * Copyright (C) 2017 Tempesta Technologies, Inc.
  *
@@ -18,31 +18,24 @@
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc., 59
  * Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *
+ * Copyright (C) Julius Goryavsky. Original code of this module
+ * is granted by the author for unrestricted use in the Tempesta FW
+ * and for distribution under GNU General Public License without
+ * any restrictions.
  */
 
-#ifndef HPACK_HUFFMAN_H
-#define HPACK_HUFFMAN_H
+#ifndef HTTP2_ERRORS_H
+#define HTTP2_ERRORS_H
 
-#include "common.h"
-#include "errors.h"
-#include "buffers.h"
-
-fast
-http2_huffman_decode (const char * __restrict source,
-			    char * __restrict dst,
-			    uwide	      n);
-
-fast
-http2_huffman_decode_fragments (HTTP2Input  * __restrict source,
-				HTTP2Output * __restrict destination);
-
-uwide
-http2_huffman_encode (const char * __restrict source,
-			    char * __restrict dst,
-			    uwide	      n);
-
-uwide
-http2_huffman_encode_length (const char * __restrict source,
-				   uwide	     n);
+enum {
+   HTTP2Error_Huffman_InvalidCode = 0x1000, /* 4096 */
+   HTTP2Error_Huffman_UnexpectedEOS,	    /* 4097 */
+   HTTP2Error_Huffman_CodeTooShort,	    /* 4098 */
+   HTTP2Error_Huffman_CodeTooLong,	    /* 4099 */
+   HTTP2Error_HPack_Unknown_Index,	    /* 4100 */
+   HTTP2Error_HPack_Invalid_Index,	    /* 4101 */
+   HTTP2Error_Out_Of_Memory = 0x2000	    /* 8192 */
+};
 
 #endif

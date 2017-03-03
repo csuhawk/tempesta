@@ -25,8 +25,8 @@
  * any restrictions.
  */
 
-#ifndef ROTATE_H
-#define ROTATE_H
+#ifndef COMMON_ROTATE_H
+#define COMMON_ROTATE_H
 
 #include "common.h"
 

@@ -28,67 +28,81 @@
 
 #if Platform_Alignment
 
-#define GET_INT32(p, n, x)					\
-	do {							\
-		if (n < 4) {					\
-			goto Bug;				\
-		}						\
-		x = Bit_Join(p[3], 24,				\
-		    Bit_Join(p[2], 16, Bit_Join8(p[1], p[0]))); \
-		p += 4; 					\
-		n -= 4; 					\
+#define GET_INT32(p, n, x, Incomplete)		\
+	do {					\
+		if (n < 4) {			\
+			goto Incomplete;	\
+		}				\
+		x = Bit_Join(p[3], 24,		\
+		    Bit_Join(p[2], 16,		\
+		    Bit_Join8(p[1], p[0])));	\
+		p += 4; 			\
+		n -= 4; 			\
 	} while (0)
 
-#define GET_INT16(p, n, x)					\
-	do {							\
-		if (n < 2) {					\
-			goto Bug;				\
-		}						\
-		x = Bit_Join8(p[1], p[0]);			\
-		p += 2; 					\
-		n -= 2; 					\
+#define GET_INT16(p, n, x, Incomplete)		\
+	do {					\
+		if (n < 2) {			\
+			goto Incomplete;	\
+		}				\
+		x = Bit_Join8(p[1], p[0]);	\
+		p += 2; 			\
+		n -= 2; 			\
 	} while (0)
 
 #else
 
-#define GET_INT32(p, n, x)					\
-	do {							\
-		if (n < 4) {					\
-			goto Bug;				\
-		}						\
-		x = Little32(* (uint32 *) p);			\
-		p += 4; 					\
-		n -= 4; 					\
+#define GET_INT32(p, n, x, Incomplete)		\
+	do {					\
+		if (n < 4) {			\
+			goto Incomplete;	\
+		}				\
+		x = Little32(* (uint32 *) p);	\
+		p += 4; 			\
+		n -= 4; 			\
 	} while (0)
 
-#define GET_INT16(p, n, x)					\
-	do {							\
-		if (n < 2) {					\
-			goto Bug;				\
-		}						\
-		x = Little16(* (uint16 *) p);			\
-		p += 2; 					\
-		n -= 2; 					\
+#define GET_INT16(p, n, x, Incomplete)		\
+	do {					\
+		if (n < 2) {			\
+			goto Incomplete;	\
+		}				\
+		x = Little16(* (uint16 *) p);	\
+		p += 2; 			\
+		n -= 2; 			\
 	} while (0)
 
 #endif
 
-#define GET_FLEXIBLE(p, n, x)					\
+#if Platform_64bit
+	#define HPACK_LIMIT 63
+	#define HPACK_LAST 1
+#else
+	#define HPACK_LIMIT 28
+	#define HPACK_LAST 15
+#endif
+
+#define GET_FLEXIBLE(p, n, x, Incomplete)			\
 	do {							\
-		x = 0;						\
+		ufast __c;					\
+		ufast __m == 0; 				\
 		do {						\
 			if (n == 0) {				\
+				goto Incomplete;		\
+			}					\
+			__c = * p++;				\
+			n--;					\
+			if (__m < HPACK_LIMIT ||		\
+			    (__m == HPACK_LIMIT &&		\
+			     __c <= HPACK_LAST))		\
+			{					\
+				x += (__c & 127) << __m;	\
+				__m += 7;			\
+			}					\
+			else if (Unlikely(__c)) {		\
 				goto Bug;			\
 			}					\
-			c = * p++;				\
-			n--;					\
-			if ((x & ~((uint32) -1 >> 7)) == 0) {	\
-				x = Bit_Join(x, 7, c & 127);	\
-			}					\
-			else {					\
-			     goto Bug;				\
-			}					\
-		} while (c > 127);				\
+		} while (__c > 127);				\
 	} while (0)
 
 #endif

@@ -22,6 +22,7 @@
 
 #include "common.h"
 #include "netconv.h"
+#include "errors.h"
 #include "buffers.h"
 #include "huffman.h"
 
@@ -53,9 +54,9 @@ typedef struct {
 #include "hfstate.h"
 
 static fast
-http2_huffman_decode_tail (ufast c,
-			   char * __restrict dst,
-			   fast current,
+http2_huffman_decode_tail (ufast		      c,
+			   char 	 * __restrict dst,
+			   fast 		      current,
 			   const HTState * __restrict state)
 {
 	ufast i;
@@ -108,9 +109,9 @@ http2_huffman_decode_tail (ufast c,
 }
 
 static fast
-http2_huffman_decode_tail16 (ufast c,
-			     char * __restrict dst,
-			     fast current,
+http2_huffman_decode_tail16 (ufast			c,
+			     char	   * __restrict dst,
+			     fast			current,
 			     const HTState * __restrict state)
 {
 	int16 offset;
@@ -230,17 +231,130 @@ End:			return offset == -1 ? HTTP2Error_Huffman_UnexpectedEOS :
 	}
 }
 
-fast
-http2_huffman_decode_fragments (HTTP2Buffer * const __restrict source,
-				char	    *	    __restrict dst,
-				uwide			       n)
+static fast
+http2_huffman_decode_tail_fragment (ufast		       c,
+				    HTTP2Output   * __restrict destination,
+				    fast		       current,
+				    const HTState * __restrict state,
+				    char	  * __restrict dst,
+				    ufast		       k)
 {
+	ufast i;
+	for (;;) {
+		fast shift;
+		if (Opt_Unlikely(current == -7)) {
+			if (Opt_Likely(state == HTDecode)) {
+				return buffer_emit(destination, k);
+			}
+			else {
+				return HTTP2Error_Huffman_CodeTooShort;
+			}
+		}
+		i = (c << -current) & 127;
+		shift = state[i].shift;
+		if (shift >= 0) {
+			if (shift > current + 7) {
+				break;
+			}
+			if (Opt_Unlikely(k == 0)) {
+				dst = buffer_expand(destination, &k);
+				if (Opt_Unlikely(k == 0)) {
+					return HTTP2Error_Out_Of_Memory;
+				}
+			}
+			* dst++ = (char) state[i].offset;
+			k--;
+			current -= shift;
+			state = HTDecode;
+		}
+		else {
+		     /*
+		      * Last 7-bit prefix also processed here, to allow
+		      * EOS padding detection. Condition here equivalent to
+		      * the "-shift >= current + 7", but working faster:
+		      */
+			if (Opt_Likely(shift <= -7 - current)) {
+				break;
+			}
+			#ifdef HT_BALANCED_TREE
+				return state[i].offset < 0 ? HTTP2Error_Huffman_UnexpectedEOS :
+							     HTTP2Error_Huffman_InvalidCode;
+			#else
+				return state[i].offset == -1 ? HTTP2Error_Huffman_UnexpectedEOS :
+							       HTTP2Error_Huffman_InvalidCode;
+			#endif
+		}
+	}
+	if (Opt_Likely(state == HTDecode &&
+	       (i ^ (HT_EOS_HIGH >> 1)) < (1U << -current)))
+	{
+		return buffer_emit(destination, k);
+	}
+	else {
+		return HTTP2Error_Huffman_CodeTooShort;
+	}
+}
+
+static fast
+http2_huffman_decode_tail16_fragment (ufast			 c,
+				      HTTP2Output   * __restrict destination,
+				      fast			 current,
+				      const HTState * __restrict state,
+				      char	    * __restrict dst,
+				      ufast			 k)
+{
+	int16 offset;
+	fast shift;
+	ufast i;
+	if (Opt_Unlikely(current == -4)) {
+		return HTTP2Error_Huffman_CodeTooShort;
+	}
+	i = (c << -current) & 15;
+	shift = state[i].shift;
+	offset = state[i].offset;
+	if (Opt_Likely(shift >= 0)) {
+		if (Opt_Unlikely(shift > current + 7)) {
+			return HTTP2Error_Huffman_CodeTooShort;
+		}
+		if (Opt_Unlikely(k == 0)) {
+			dst = buffer_expand(destination, &k);
+			if (Opt_Unlikely(k == 0)) {
+				return HTTP2Error_Out_Of_Memory;
+			}
+		}
+		* dst++ = (char) offset;
+		k--;
+		current -= shift;
+		return http2_huffman_decode_tail_fragment(
+			c, destination, current, HTDecode, dst, k
+		);
+	}
+	else {
+		if (Opt_Unlikely(-shift > current + 7)) {
+			return HTTP2Error_Huffman_CodeTooShort;
+		}
+		#ifdef HT_BALANCED_TREE
+			return offset < 0 ? HTTP2Error_Huffman_UnexpectedEOS :
+					    HTTP2Error_Huffman_InvalidCode;
+		#else
+			return offset == -1 ? HTTP2Error_Huffman_UnexpectedEOS :
+					      HTTP2Error_Huffman_InvalidCode;
+		#endif
+	}
+}
+
+fast
+http2_huffman_decode_fragments (HTTP2Input  * __restrict source,
+				HTTP2Output * __restrict destination)
+{
+	uwide n, m;
+	const uchar * __restrict src = buffer_get(source, &n, &m);
 	if (n) {
-		uwide m;
-		const uchar * __restrict src = source->get(source, &m);
 		ufast c = * src++;
 		fast current = 8 - 7;
 		int16 offset;
+		ufast k;
+		char * __restrict dst = buffer_open(destination, &k);
 		n--;
 		m--;
 		for (;;) {
@@ -251,24 +365,34 @@ Root:			state = HTDecode;
 				ufast i;
 				if (current <= 0) {
 					if (Opt_Likely(n)) {
-						if (m == 0) {
-							src = source->next(source, &m);
-							m--;
+						if (Opt_Unlikely(m == 0)) {
+							src = buffer_next(source, &m);
 						}
 						current += 8;
 						c = Bit_Join8(c, * src++);
 						n--;
+						m--;
 					}
 					else {
 					     /* Last 7-bit prefix also processed here (see current <= 0 above): */
-						return http2_huffman_decode_tail(c, dst, current, state);
+						buffer_close(source, m);
+						return http2_huffman_decode_tail_fragment(
+							c, destination, current, state, dst, k
+						);
 					}
 				}
 				i = (c >> current) & 127;
 				shift = state[i].shift;
 				offset = state[i].offset;
 				if (shift >= 0) {
+					if (Opt_Unlikely(k == 0)) {
+						dst = buffer_expand(destination, &k);
+						if (Opt_Unlikely(k == 0)) {
+							return HTTP2Error_Out_Of_Memory;
+						}
+					}
 					* dst++ = (char) offset;
+					k--;
 					current -= shift;
 					goto Root;
 				}
@@ -289,16 +413,19 @@ Root:			state = HTDecode;
 				ufast i;
 				if (current < 0) {
 					if (Opt_Likely(n)) {
-						if (m == 0) {
-							src = source->next(source, &m);
-							m--;
+						if (Opt_Unlikely(m == 0)) {
+							src = buffer_next(source, &m);
 						}
 						current += 8;
 						c = Bit_Join8(c, * src++);
 						n--;
+						m--;
 					}
 					else {
-						return http2_huffman_decode_tail16(c, dst, current, state);
+						buffer_close(source, m);
+						return http2_huffman_decode_tail16_fragment(
+							c, destination, current, state, dst, k
+						);
 					}
 				}
 				i = (c >> current) & 15;
@@ -327,6 +454,7 @@ End:			return offset == -1 ? HTTP2Error_Huffman_UnexpectedEOS :
 }
 
 #ifdef Platform_32bit
+
 #define Write1()		     \
 	dst[0] = (char) (aux >> 24)
 #define Write2()		     \
@@ -337,7 +465,9 @@ End:			return offset == -1 ? HTTP2Error_Huffman_UnexpectedEOS :
 	dst[2] = (char) (aux >> 8);  \
 	dst[3] = (char) aux
 #define WriteAux Write4
+
 #else
+
 #define Write1()		     \
 	dst[0] = (char) (aux >> 56)
 #define Write2()		     \
@@ -353,6 +483,7 @@ End:			return offset == -1 ? HTTP2Error_Huffman_UnexpectedEOS :
 	dst[5] = (char) (aux >> 16); \
 	dst[6] = (char) (aux >> 8);  \
 	dst[7] = (char) aux
+
 #endif
 
 uwide
@@ -408,7 +539,7 @@ http2_huffman_encode (const char * __restrict source,
 						WriteAux();
 					#endif
 					dst += Word_Size;
-					current = 0;
+					goto Exit;
 				}
 			#endif
 			if (current > 31) {
@@ -419,7 +550,7 @@ http2_huffman_encode (const char * __restrict source,
 				#endif
 				dst += 4;
 				#ifdef Platform_32bit
-					current = 0;
+					goto Exit;
 				#else
 					#ifndef Platform_Alignment
 						aux >>= 32;
@@ -453,5 +584,23 @@ http2_huffman_encode (const char * __restrict source,
 			}
 		}
 	}
+Exit:
 	return dst - dst_saved;
+}
+
+uwide
+http2_huffman_encode_length (const char * __restrict source,
+				   uwide	     n)
+{
+	if (n) {
+		const uchar * __restrict src = (const uchar *) source;
+		fast current = HTLength[* src++];
+		while (--n) {
+			current += HTLength[* src++];
+		}
+		return (current + 7) >> 3;
+	}
+	else	{
+		return 0;
+	}
 }

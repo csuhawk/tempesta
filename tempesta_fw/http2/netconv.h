@@ -25,8 +25,8 @@
  * any restrictions.
  */
 
-#ifndef NETCONV_H
-#define NETCONV_H
+#ifndef COMMON_NETCONV_H
+#define COMMON_NETCONV_H
 
 #include "common.h"
 #include "rotate.h"

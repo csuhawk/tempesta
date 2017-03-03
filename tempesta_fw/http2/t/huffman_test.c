@@ -47,13 +47,13 @@ typedef struct {
 
 int common_cdecl main (void)
 {
+	static char buf [64 * 4];
 	ufast k, i;
 	uwide ts;
 	double tm;
 	ts = clock();
 	for (k = 0; k < Iterations; k++) {
 		for (i = 0; i < N; i++) {
-			char buf [64 * 4];
 			fast rc;
 			rc = ngx_http_v2_huff_decode((const uchar *) test[i].encoded,
 						     test[i].encoded_len, (uchar *) buf, 1);
@@ -74,11 +74,10 @@ int common_cdecl main (void)
 	ts = clock();
 	for (k = 0; k < Iterations; k++) {
 		for (i = 0; i < N; i++) {
-			char buf [64 * 4];
-			fast rc;
+			ufast rc;
 			rc = http2_huffman_decode(test[i].encoded, buf, test[i].encoded_len);
 			if (rc) {
-				printf("Bug #2: Iteration: %u, rc = %d...\n", i, rc);
+				printf("Bug #1: Iteration: %u, rc = %d...\n", i, rc);
 				return 1;
 			}
 			#if With_Compare

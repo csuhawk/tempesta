@@ -37,7 +37,7 @@
  * Platform_32bit: 32-bit platform.
  * Platform_64bit: 64-bit platform.
  */
-#define Platform_64bit
+#define Platform_32bit
 
 /*
  * Platform_Little: little-endian platform.

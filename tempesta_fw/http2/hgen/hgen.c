@@ -291,6 +291,7 @@ int common_cdecl main (void)
 	#endif
 	offset = ht_gen(root, 0);
 	offset16 = ht_gen16(root, offset);
+	printf("/* This is generated file, please do not edit it... */\n\n");
 	printf("#define HT_SMALL %u\n", offset);
 	printf("#define HT_TOTAL %u\n\n", offset16);
 	printf("static const uint32 HTEncode [] = {\n\t");
