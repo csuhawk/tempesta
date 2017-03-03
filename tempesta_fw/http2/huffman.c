@@ -236,7 +236,7 @@ http2_huffman_decode_tail_fragment (ufast		       c,
 				    HTTP2Output   * __restrict destination,
 				    fast		       current,
 				    const HTState * __restrict state,
-				    char	  * __restrict dst,
+				    uchar	  * __restrict dst,
 				    ufast		       k)
 {
 	ufast i;
@@ -262,7 +262,7 @@ http2_huffman_decode_tail_fragment (ufast		       c,
 					return HTTP2Error_Out_Of_Memory;
 				}
 			}
-			* dst++ = (char) state[i].offset;
+			* dst++ = state[i].offset;
 			k--;
 			current -= shift;
 			state = HTDecode;
@@ -300,7 +300,7 @@ http2_huffman_decode_tail16_fragment (ufast			 c,
 				      HTTP2Output   * __restrict destination,
 				      fast			 current,
 				      const HTState * __restrict state,
-				      char	    * __restrict dst,
+				      uchar	    * __restrict dst,
 				      ufast			 k)
 {
 	int16 offset;
@@ -322,7 +322,7 @@ http2_huffman_decode_tail16_fragment (ufast			 c,
 				return HTTP2Error_Out_Of_Memory;
 			}
 		}
-		* dst++ = (char) offset;
+		* dst++ = offset;
 		k--;
 		current -= shift;
 		return http2_huffman_decode_tail_fragment(
@@ -354,7 +354,7 @@ http2_huffman_decode_fragments (HTTP2Input  * __restrict source,
 		fast current = 8 - 7;
 		int16 offset;
 		ufast k;
-		char * __restrict dst = buffer_open(destination, &k);
+		uchar * __restrict dst = buffer_open(destination, &k);
 		n--;
 		m--;
 		for (;;) {
@@ -391,7 +391,7 @@ Root:			state = HTDecode;
 							return HTTP2Error_Out_Of_Memory;
 						}
 					}
-					* dst++ = (char) offset;
+					* dst++ = offset;
 					k--;
 					current -= shift;
 					goto Root;
@@ -432,7 +432,14 @@ Root:			state = HTDecode;
 				shift = state[i].shift;
 				offset = state[i].offset;
 				if (Opt_Likely(shift >= 0)) {
-					* dst++ = (char) offset;
+					if (Opt_Unlikely(k == 0)) {
+						dst = buffer_expand(destination, &k);
+						if (Opt_Unlikely(k == 0)) {
+							return HTTP2Error_Out_Of_Memory;
+						}
+					}
+					* dst++ = offset;
+					k--;
 					current -= shift;
 				}
 				else {

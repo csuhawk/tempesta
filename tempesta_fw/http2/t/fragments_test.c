@@ -55,45 +55,39 @@ typedef struct {
 static ufast Random_x = 0x55555555;
 static ufast Random_y = 0xAAAAAAAA;
 
-static void Random32_Init (uint32 seed)
-{
-   Random_x = seed & 0x55555555;
-   Random_y = seed & 0xAAAAAAAA;
-}
-
 /* Very simple random number generator, designed for */
 /* test purposes only, based on two mod 2^32 LCGs: */
 
 static ufast Random32 (void)
 {
-   const ufast x = Random_x * rm_a + rm_c1;
-   const ufast y = Random_y * rm_b + rm_c2;
-   Random_x = x;
-   Random_y = y;
-   return (x >> 8) ^ (y << 8);
+	const ufast x = Random_x * rm_a + rm_c1;
+	const ufast y = Random_y * rm_b + rm_c2;
+	Random_x = x;
+	Random_y = y;
+	return (x >> 8) ^ (y << 8);
 }
 
 /* Unbiased random index in the {0; n} range: */
 
 static ufast Random32_Index (const ufast n)
 {
-   if (n) {
-      ufast limit = 4294967295U - 4294967295U % n;
-      ufast x;
-      do {
-	 x = Random32();
-      } while (x >= limit);
-      return x % n;
-   }
-   else {
-      return 0;
-   }
+	if (n) {
+		ufast limit = 4294967295U - 4294967295U % n;
+		ufast x;
+		do {
+			x = Random32();
+		} while (x >= limit);
+		return x % n;
+	}
+	else {
+		return 0;
+	}
 }
 
 int common_cdecl main (void)
 {
 	static TfwStr fragments [3];
-	static TfwStr main;
+	static TfwStr root;
 	static char buf1 [4*64];
 	static char buf2 [4*64];
 	static char buf3 [4*64];
@@ -109,48 +103,49 @@ int common_cdecl main (void)
 	buffer_new(&out, NULL);
 	for (k = 0; k < Iterations; k++) {
 		for (i = 0; i < N; i++) {
+			const char * __restrict encoded = test[i].encoded;
 			TfwStr * __restrict str;
 			ufast rc;
 			uwide n;
 			ufast length = test[i].encoded_len;
 			if (length == 1) {
-			   main.ptr = buf1;
-			   main.len = 1;
-			   main.flags = 0;
-			   buf1[0] = test[i].encoded[0];
+				root.ptr = buf1;
+				root.len = 1;
+				root.flags = 0;
+				buf1[0] = encoded[0];
 			}
 			else {
-			   main.ptr = fragments;
-			   main.len = length;
-			   if (length == 2) {
-			      main.flags = 2 << TFW_STR_CN_SHIFT;
-			      fragments[0].len = 1;
-			      fragments[1].len = 1;
-			      buf2[0] = test[i].encoded[0];
-			      buf1[0] = test[i].encoded[1];
-			   }
-			   else {
-			      const ufast split2 = Random32_Index(length - 1) + 1;
-			      const ufast split1 = Random32_Index(split2) + 1;
-			      if (split1 == split2) {
-				 main.flags = 2 << TFW_STR_CN_SHIFT;
-				 fragments[0].len = split1;
-				 fragments[1].len = length - split1;
-				 memcpy(buf2, test[i].encoded, split1);
-				 memcpy(buf1, test[i].encoded + split1, length - split1);
-			      }
-			      else {
-				 main.flags = 3 << TFW_STR_CN_SHIFT;
-				 fragments[0].len = split1;
-				 fragments[1].len = split2 - split1;
-				 fragments[2].len = length - split2;
-				 memcpy(buf2, test[i].encoded, split1);
-				 memcpy(buf1, test[i].encoded + split1, split2 - split1);
-				 memcpy(buf3, test[i].encoded + split2, length - split2);
-			      }
-			   }
+				root.ptr = fragments;
+				root.len = length;
+				if (length == 2) {
+					root.flags = 2 << TFW_STR_CN_SHIFT;
+					fragments[0].len = 1;
+					fragments[1].len = 1;
+					buf2[0] = encoded[0];
+					buf1[0] = encoded[1];
+				}
+				else {
+					const ufast split2 = Random32_Index(length - 1) + 1;
+					const ufast split1 = Random32_Index(split2) + 1;
+					if (split1 == split2) {
+						root.flags = 2 << TFW_STR_CN_SHIFT;
+						fragments[0].len = split1;
+						fragments[1].len = length - split1;
+						memcpy(buf2, encoded, split1);
+						memcpy(buf1, encoded + split1, length - split1);
+					}
+					else {
+						root.flags = 3 << TFW_STR_CN_SHIFT;
+						fragments[0].len = split1;
+						fragments[1].len = split2 - split1;
+						fragments[2].len = length - split2;
+						memcpy(buf2, encoded, split1);
+						memcpy(buf1, encoded + split1, split2 - split1);
+						memcpy(buf3, encoded + split2, length - split2);
+					}
+				}
 			}
-			buffer_from_tfwstr(&in, &main);
+			buffer_from_tfwstr(&in, &root);
 			rc = http2_huffman_decode_fragments(&in, &out);
 			if (rc) {
 				printf("Bug #1: Iteration: %u, rc = %u...\n", i, rc);

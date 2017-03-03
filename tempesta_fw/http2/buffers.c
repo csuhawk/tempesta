@@ -5,6 +5,8 @@
 #include "errors.h"
 #include "buffers.h"
 
+#define Debug_Buffers 0
+
 /* -------------------------------------------------- */
 /* Input buffer (used by parser to handle fragments): */
 /* -------------------------------------------------- */
@@ -37,7 +39,9 @@ buffer_get (HTTP2Input * __restrict p,
 	const TfwStr * __restrict fp = p->str;
 	* n = length;
 	if (TFW_STR_PLAIN(fp)) {
-		puts("Plain string...");
+		#if Debug_Buffers
+			puts("Plain string...");
+		#endif
 		* m = length;
 	}
 	else {
@@ -47,7 +51,9 @@ buffer_get (HTTP2Input * __restrict p,
 		p->tail = tail;
 		* m = tail;
 	}
-	printf("Open at: %u , total: %u bytes, current: %u bytes...\n", offset, length, * m);
+	#if Debug_Buffers
+		printf("Open at: %u, total: %u bytes, current: %u bytes...\n", offset, length, * m);
+	#endif
 	return (const uchar *) fp->ptr + offset;
 }
 
@@ -65,7 +71,9 @@ buffer_next (HTTP2Input * __restrict p,
 	p->current = current;
 	p->tail = length;
 	* m = length;
-	printf("Next fragment: %u bytes...\n", length);
+	#if Debug_Buffers
+		printf("Next fragment: %u bytes...\n", length);
+	#endif
 	return (const uchar *) fp->ptr;
 }
 
@@ -82,14 +90,18 @@ buffer_close (HTTP2Input * __restrict p,
 		if (bias) {
 			p->offset += bias;
 			p->n -= bias;
-			printf("Shift forward to %u bytes...\n", bias);
+			#if Debug_Buffers
+				printf("Shift forward to %u bytes...\n", bias);
+			#endif
 		}
 	}
 	else {
 		p->offset = 0;
 		p->n -= tail;
 		p->current++;
-		printf("Consumed %u bytes...", tail);
+		#if Debug_Buffers
+			printf("Consumed %u bytes...\n", tail);
+		#endif
 	}
 }
 
@@ -144,13 +156,17 @@ buffer_expand (HTTP2Output * __restrict p,
 				p->tail = Unused_Space;
 				p->count++;
 				p->total += tail;
-				printf("New fragment added to string: %u bytes...\n", tail);
+				#if Debug_Buffers
+					printf("New fragment added to string: %u bytes...\n", tail);
+				#endif
 			}
 			else {
 				p->current = block;
 				p->offset = 0;
 				p->tail = Unused_Space;
-				puts("New string started at offset 0...");
+				#if Debug_Buffers
+					puts("New string started at offset 0...");
+				#endif
 			}
 		}
 		else {
@@ -160,13 +176,20 @@ buffer_expand (HTTP2Output * __restrict p,
 				       /* only to avoid partial writing */
 				       /* into cache line. */
 			p->tail = Unused_Space;
-			puts("Initial block allocated...");
+			#if Debug_Buffers
+				puts("Initial block allocated...");
+			#endif
 		}
-		printf("New block allocated: %u unused bytes...\n", p->tail);
+		#if Debug_Buffers
+			printf("New offset = %u\n", p->offset);
+			printf("New block allocated: %u unused bytes...\n", p->tail);
+		#endif
 		return block->data;
 	}
 	else {
-		puts("Unable to allocate memory block...");
+		#if Debug_Buffers
+			puts("Unable to allocate memory block...");
+		#endif
 		* n = 0;
 		return NULL;
 	}
@@ -184,11 +207,15 @@ buffer_open (HTTP2Output * __restrict p,
 	if (tail) {
 		HTTP2Block * __restrict last = p->last;
 		p->current = last;
-		printf("Open output buffer with %u bytes (offset = %u)...\n", tail, p->offset);
+		#if Debug_Buffers
+			printf("Open output buffer with %u bytes (offset = %u)...\n", tail, p->offset);
+		#endif
 		return last->data + p->offset;
 	}
 	else {
-		puts("Return empty output buffer...");
+		#if Debug_Buffers
+			puts("Return empty output buffer...");
+		#endif
 		return NULL;
 	}
 }
@@ -204,16 +231,21 @@ buffer_emit (HTTP2Output * __restrict p,
 	const ufast tail = p->tail - (ufast) n;
 	ufast count = p->count;
 	const uwide total = p->total + tail;
+	#if Debug_Buffers
+		printf("In emit, total length: %u, last delta: %u...\n", total, tail);
+		printf("Offset = %u\n", offset);
+	#endif
 	if (total) {
 		TfwPool * __restrict pool = p->pool;
 		HTTP2Block * __restrict current = p->current;
 		TfwStr * __restrict str;
-		p->offset = offset + tail;
+		p->offset = count ? tail : tail + offset;
 		p->tail = n;
 		p->count = 0;
 		p->total = 0;
 		str = tfw_pool_alloc(pool, sizeof(TfwStr));
-		if (count) {
+		p->str = str;
+		if (count == 0) {
 			str->ptr = current->data + offset;
 			str->len = total;
 			str->skb = NULL;
@@ -222,7 +254,7 @@ buffer_emit (HTTP2Output * __restrict p,
 		}
 		else {
 			TfwStr * __restrict fp =
-				tfw_pool_alloc(pool, sizeof(TfwStr) * (count + 1));
+				tfw_pool_alloc(pool, ++count * sizeof(TfwStr));
 			str->ptr = fp;
 			str->len = total;
 			str->skb = NULL;
@@ -233,14 +265,21 @@ buffer_emit (HTTP2Output * __restrict p,
 			fp->skb = NULL;
 			fp->eolen = 0;
 			fp->flags = 0;
+			#if Debug_Buffers
+				printf("Fragment: %u bytes...\n", fp->len);
+			#endif
 			fp++;
-			while (count > 1) {
+			count -= 2;
+			while (count) {
 				current = current->next;
 				fp->ptr = current->data;
 				fp->len = current->n - offsetof(HTTP2Block, data);
 				fp->skb = NULL;
 				fp->eolen = 0;
 				fp->flags = 0;
+				#if Debug_Buffers
+					printf("Fragment: %u bytes...\n", fp->len);
+				#endif
 				fp++;
 				count--;
 			}
@@ -250,6 +289,9 @@ buffer_emit (HTTP2Output * __restrict p,
 			fp->skb = NULL;
 			fp->eolen = 0;
 			fp->flags = 0;
+			#if Debug_Buffers
+				printf("Fragment: %u bytes...\n", fp->len);
+			#endif
 		}
 	}
 	return 0;
