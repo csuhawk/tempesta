@@ -48,7 +48,7 @@ buffer_get (HTTP2Input * __restrict p,
 		* m = tail;
 	}
 	#if Debug_Buffers
-		printf("Open at: %u, total: %u bytes, current: %u bytes...\n", offset, length, * m);
+		printf("Open at: %u, current: %u bytes...\n", offset, * m);
 	#endif
 	return (const uchar *) fp->ptr + offset;
 }
