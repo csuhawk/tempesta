@@ -29,7 +29,7 @@
 #define ht_debug 0
 
 #define nbits 7
-#define mbits 4
+#define mbits 3
 
 #define big (1 << nbits)
 #define small (1 << mbits)
@@ -173,12 +173,12 @@ ht_out (const htree * __restrict base,
 			ufast shift = base[i].shift;
 			fast symbol = base[i].symbol;
 			if (symbol == -1) {
-				printf("\t{-%u, %4d}%c /* %u: EOS */\n",
-				       shift, -1, comma, shift);
+				printf("\t{%u,  %4d}%c /* %u: EOS */\n",
+				       shift, 0, comma, shift);
 			}
 			else if (symbol == -2) {
 				printf("\t{-%u, %4d}%c /* %u: Bug */\n",
-				       shift, -2, comma, shift);
+				       shift, -1, comma, shift);
 				Incomplete_Path = 1;
 			}
 			else if (symbol == '\\') {
@@ -234,12 +234,12 @@ ht_out16 (const htree * __restrict base,
 						comma = ' ';
 					}
 					if (symbol == -1) {
-						printf("\t{-%u, %4d}%c /* %u: EOS */\n",
-						       shift2, -1, comma, shift);
+						printf("\t{%u,  %4d}%c /* %u: EOS */\n",
+						       shift2, 0, comma, shift);
 					}
 					else if (symbol == -2) {
 						printf("\t{-%u, %4d}%c /* %u: Bug */\n",
-						       shift2, -2, comma, shift);
+						       shift2, -1, comma, shift);
 						Incomplete_Path = 1;
 					}
 					else if (symbol == '\\') {

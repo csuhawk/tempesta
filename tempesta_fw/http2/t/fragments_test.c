@@ -146,7 +146,7 @@ int common_cdecl main (void)
 				}
 			}
 			buffer_from_tfwstr(&in, &root);
-			rc = http2_huffman_decode_fragments(&in, &out);
+			rc = http2_huffman_decode_fragments(&in, &out, length);
 			if (rc) {
 				printf("Bug #1: Iteration: %u, rc = %u...\n", i, rc);
 				return 1;
@@ -169,7 +169,7 @@ int common_cdecl main (void)
 				else {
 					TfwStr * __restrict fp = (TfwStr *) str->ptr;
 					const ufast count = TFW_STR_CHUNKN(str);
-					ufast k = count;
+					ufast cnt = count;
 					do {
 						const ufast m = fp->len;
 						if (m == 0) {
@@ -182,7 +182,7 @@ int common_cdecl main (void)
 						}
 						source += m;
 						fp++;
-					} while (--k);
+					} while (--cnt);
 					tfw_pool_free(out.pool, str->ptr, sizeof(TfwStr) * count);
 				}
 				tfw_pool_free(out.pool, str, sizeof(TfwStr));

@@ -34,7 +34,8 @@ http2_huffman_decode (const char * __restrict source,
 
 fast
 http2_huffman_decode_fragments (HTTP2Input  * __restrict source,
-				HTTP2Output * __restrict destination);
+				HTTP2Output * __restrict destination,
+				uwide			 n);
 
 uwide
 http2_huffman_encode (const char * __restrict source,

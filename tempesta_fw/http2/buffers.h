@@ -48,12 +48,10 @@ void
 buffer_from_tfwstr (HTTP2Input * __restrict p,
 		    const TfwStr * __restrict str);
 
-/* Get the current pointer, total length of unparsed part */
-/* of the string ("n") and length of the current fragment ("m"): */
+/* Get pointer to and length of the current fragment ("m"): */
 
 const uchar *
 buffer_get (HTTP2Input * __restrict p,
-	    uwide      * __restrict n,
 	    uwide      * __restrict m);
 
 /* Get the next pointer and length of the next fragment: */

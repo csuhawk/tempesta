@@ -31,9 +31,9 @@
  * |shift| = modulus of the "shift" field always contains
  *	     number of bits in the Huffman-encoded representation,
  *	     which must be taken by decoder on this step.
- * NB! for short tables (16-entries tables) difference
+ * NB! for short tables (8-entries tables) difference
  *     in the prefix length (7 bits for the big tables
- *     minus 4 bits for short tables = 3 bits) was pre-added
+ *     minus 3 bits for short tables = 4 bits) was pre-added
  *     to the value of "shift" field (just to speedup the decoder),
  *     thus true value of the Huffman-encoded prefix, which must
  *     be taken by decoder on this step is equal to the "shift"
@@ -81,21 +81,16 @@ http2_huffman_decode_tail (ufast		      c,
 			state = HTDecode;
 		}
 		else {
-		     /*
-		      * Last 7-bit prefix also processed here, to allow
-		      * EOS padding detection. Condition here equivalent to
-		      * the "-shift >= current + 7", but working faster:
-		      */
+			/*
+			 * Last 7-bit prefix also processed here, to allow
+			 * EOS padding detection. Condition here equivalent to
+			 * the "-shift >= current + 7", but working faster:
+			 */
 			if (Opt_Likely(shift <= -7 - current)) {
 				break;
 			}
-			#ifdef HT_BALANCED_TREE
-				return state[i].offset < 0 ? HTTP2Error_Huffman_UnexpectedEOS :
-							     HTTP2Error_Huffman_InvalidCode;
-			#else
-				return state[i].offset == -1 ? HTTP2Error_Huffman_UnexpectedEOS :
-							       HTTP2Error_Huffman_InvalidCode;
-			#endif
+			return state[i].offset == 0 ? HTTP2Error_Huffman_UnexpectedEOS :
+						      HTTP2Error_Huffman_InvalidCode;
 		}
 	}
 	if (Opt_Likely(state == HTDecode &&
@@ -109,7 +104,7 @@ http2_huffman_decode_tail (ufast		      c,
 }
 
 static fast
-http2_huffman_decode_tail16 (ufast			c,
+http2_huffman_decode_tail_s (ufast			c,
 			     char	   * __restrict dst,
 			     fast			current,
 			     const HTState * __restrict state)
@@ -117,10 +112,10 @@ http2_huffman_decode_tail16 (ufast			c,
 	int16 offset;
 	fast shift;
 	ufast i;
-	if (Opt_Unlikely(current == -4)) {
+	if (Opt_Unlikely(current == -3)) {
 		return HTTP2Error_Huffman_CodeTooShort;
 	}
-	i = (c << -current) & 15;
+	i = (c << -current) & 7;
 	shift = state[i].shift;
 	offset = state[i].offset;
 	if (Opt_Likely(shift >= 0)) {
@@ -132,16 +127,15 @@ http2_huffman_decode_tail16 (ufast			c,
 		return http2_huffman_decode_tail(c, dst, current, HTDecode);
 	}
 	else {
-		if (Opt_Unlikely(-shift > current + 7)) {
+		/*
+		 * Condition here equivalent to the "-shift > current + 7",
+		 * but working faster:
+		 */
+		if (Opt_Unlikely(shift < -7 - current)) {
 			return HTTP2Error_Huffman_CodeTooShort;
 		}
-		#ifdef HT_BALANCED_TREE
-			return offset < 0 ? HTTP2Error_Huffman_UnexpectedEOS :
-					    HTTP2Error_Huffman_InvalidCode;
-		#else
-			return offset == -1 ? HTTP2Error_Huffman_UnexpectedEOS :
-					      HTTP2Error_Huffman_InvalidCode;
-		#endif
+		return offset == 0 ? HTTP2Error_Huffman_UnexpectedEOS :
+				     HTTP2Error_Huffman_InvalidCode;
 	}
 }
 
@@ -169,8 +163,11 @@ Root:			state = HTDecode;
 						n--;
 					}
 					else {
-					     /* Last 7-bit prefix also processed here (see current <= 0 above): */
-						return http2_huffman_decode_tail(c, dst, current, state);
+					     /* Last 7-bit prefix also processed here */
+					     /* (see current <= 0 above): */
+						return http2_huffman_decode_tail(
+							c, dst, current, state
+						);
 					}
 				}
 				i = (c >> current) & 127;
@@ -183,16 +180,22 @@ Root:			state = HTDecode;
 				}
 				else {
 					current += shift;
-					if (Opt_Unlikely(offset < 0)) {
-						goto End;
+				#ifdef HT_BALANCED_TREE
+					if (Opt_Likely(offset)) {
+				#else
+					if (Opt_Likely(offset > 0)) {
+				#endif
+						state = HTDecode + offset;
+						if (offset >= HT_SMALL) {
+							break;
+						}
 					}
-					state = HTDecode + offset;
-					if (offset >= HT_SMALL) {
-						break;
+					else {
+						goto End;
 					}
 				}
 			}
-			current += 3;
+			current += 4;
 			{
 				fast shift;
 				ufast i;
@@ -203,10 +206,12 @@ Root:			state = HTDecode;
 						n--;
 					}
 					else {
-						return http2_huffman_decode_tail16(c, dst, current, state);
+						return http2_huffman_decode_tail_s(
+							c, dst, current, state
+						);
 					}
 				}
-				i = (c >> current) & 15;
+				i = (c >> current) & 7;
 				shift = state[i].shift;
 				offset = state[i].offset;
 				if (Opt_Likely(shift >= 0)) {
@@ -222,8 +227,8 @@ Root:			state = HTDecode;
 		#if defined(HT_BALANCED_TREE) && ! defined(_MSC_VER)
 End:			return HTTP2Error_Huffman_UnexpectedEOS;
 		#else
-End:			return offset == -1 ? HTTP2Error_Huffman_UnexpectedEOS :
-					      HTTP2Error_Huffman_InvalidCode;
+End:			return offset == 0 ? HTTP2Error_Huffman_UnexpectedEOS :
+					     HTTP2Error_Huffman_InvalidCode;
 		#endif
 	}
 	else {
@@ -262,27 +267,22 @@ http2_huffman_decode_tail_fragment (ufast		       c,
 					return HTTP2Error_Out_Of_Memory;
 				}
 			}
-			* dst++ = state[i].offset;
+			* dst++ = (uchar) state[i].offset;
 			k--;
 			current -= shift;
 			state = HTDecode;
 		}
 		else {
-		     /*
-		      * Last 7-bit prefix also processed here, to allow
-		      * EOS padding detection. Condition here equivalent to
-		      * the "-shift >= current + 7", but working faster:
-		      */
+			/*
+			 * Last 7-bit prefix also processed here, to allow
+			 * EOS padding detection. Condition here equivalent to
+			 * the "-shift >= current + 7", but working faster:
+			 */
 			if (Opt_Likely(shift <= -7 - current)) {
 				break;
 			}
-			#ifdef HT_BALANCED_TREE
-				return state[i].offset < 0 ? HTTP2Error_Huffman_UnexpectedEOS :
-							     HTTP2Error_Huffman_InvalidCode;
-			#else
-				return state[i].offset == -1 ? HTTP2Error_Huffman_UnexpectedEOS :
-							       HTTP2Error_Huffman_InvalidCode;
-			#endif
+			return state[i].offset == 0 ? HTTP2Error_Huffman_UnexpectedEOS :
+						      HTTP2Error_Huffman_InvalidCode;
 		}
 	}
 	if (Opt_Likely(state == HTDecode &&
@@ -296,7 +296,7 @@ http2_huffman_decode_tail_fragment (ufast		       c,
 }
 
 static fast
-http2_huffman_decode_tail16_fragment (ufast			 c,
+http2_huffman_decode_tail_s_fragment (ufast			 c,
 				      HTTP2Output   * __restrict destination,
 				      fast			 current,
 				      const HTState * __restrict state,
@@ -306,10 +306,10 @@ http2_huffman_decode_tail16_fragment (ufast			 c,
 	int16 offset;
 	fast shift;
 	ufast i;
-	if (Opt_Unlikely(current == -4)) {
+	if (Opt_Unlikely(current == -3)) {
 		return HTTP2Error_Huffman_CodeTooShort;
 	}
-	i = (c << -current) & 15;
+	i = (c << -current) & 7;
 	shift = state[i].shift;
 	offset = state[i].offset;
 	if (Opt_Likely(shift >= 0)) {
@@ -322,7 +322,7 @@ http2_huffman_decode_tail16_fragment (ufast			 c,
 				return HTTP2Error_Out_Of_Memory;
 			}
 		}
-		* dst++ = offset;
+		* dst++ = (uchar) offset;
 		k--;
 		current -= shift;
 		return http2_huffman_decode_tail_fragment(
@@ -330,26 +330,26 @@ http2_huffman_decode_tail16_fragment (ufast			 c,
 		);
 	}
 	else {
-		if (Opt_Unlikely(-shift > current + 7)) {
+		/*
+		 * Condition here equivalent to the "-shift > current + 7",
+		 * but working faster:
+		 */
+		if (Opt_Unlikely(shift < -7 - current)) {
 			return HTTP2Error_Huffman_CodeTooShort;
 		}
-		#ifdef HT_BALANCED_TREE
-			return offset < 0 ? HTTP2Error_Huffman_UnexpectedEOS :
-					    HTTP2Error_Huffman_InvalidCode;
-		#else
-			return offset == -1 ? HTTP2Error_Huffman_UnexpectedEOS :
-					      HTTP2Error_Huffman_InvalidCode;
-		#endif
+		return offset == 0 ? HTTP2Error_Huffman_UnexpectedEOS :
+				     HTTP2Error_Huffman_InvalidCode;
 	}
 }
 
 fast
 http2_huffman_decode_fragments (HTTP2Input  * __restrict source,
-				HTTP2Output * __restrict destination)
+				HTTP2Output * __restrict destination,
+				uwide			 n)
 {
-	uwide n, m;
-	const uchar * __restrict src = buffer_get(source, &n, &m);
 	if (n) {
+		uwide m;
+		const uchar * __restrict src = buffer_get(source, &m);
 		ufast c = * src++;
 		fast current = 8 - 7;
 		int16 offset;
@@ -374,7 +374,8 @@ Root:			state = HTDecode;
 						m--;
 					}
 					else {
-					     /* Last 7-bit prefix also processed here (see current <= 0 above): */
+					     /* Last 7-bit prefix also processed here */
+					     /* (see current <= 0 above): */
 						buffer_close(source, m);
 						return http2_huffman_decode_tail_fragment(
 							c, destination, current, state, dst, k
@@ -391,23 +392,29 @@ Root:			state = HTDecode;
 							return HTTP2Error_Out_Of_Memory;
 						}
 					}
-					* dst++ = offset;
+					* dst++ = (uchar) offset;
 					k--;
 					current -= shift;
 					goto Root;
 				}
 				else {
 					current += shift;
-					if (Opt_Unlikely(offset < 0)) {
-						goto End;
+				#ifdef HT_BALANCED_TREE
+					if (Opt_Likely(offset)) {
+				#else
+					if (Opt_Likely(offset > 0)) {
+				#endif
+						state = HTDecode + offset;
+						if (offset >= HT_SMALL) {
+							break;
+						}
 					}
-					state = HTDecode + offset;
-					if (offset >= HT_SMALL) {
-						break;
+					else {
+						goto End;
 					}
 				}
 			}
-			current += 3;
+			current += 4;
 			{
 				fast shift;
 				ufast i;
@@ -423,12 +430,12 @@ Root:			state = HTDecode;
 					}
 					else {
 						buffer_close(source, m);
-						return http2_huffman_decode_tail16_fragment(
+						return http2_huffman_decode_tail_s_fragment(
 							c, destination, current, state, dst, k
 						);
 					}
 				}
-				i = (c >> current) & 15;
+				i = (c >> current) & 7;
 				shift = state[i].shift;
 				offset = state[i].offset;
 				if (Opt_Likely(shift >= 0)) {
@@ -438,7 +445,7 @@ Root:			state = HTDecode;
 							return HTTP2Error_Out_Of_Memory;
 						}
 					}
-					* dst++ = offset;
+					* dst++ = (uchar) offset;
 					k--;
 					current -= shift;
 				}
@@ -451,8 +458,8 @@ Root:			state = HTDecode;
 		#if defined(HT_BALANCED_TREE) && ! defined(_MSC_VER)
 End:			return HTTP2Error_Huffman_UnexpectedEOS;
 		#else
-End:			return offset == -1 ? HTTP2Error_Huffman_UnexpectedEOS :
-					      HTTP2Error_Huffman_InvalidCode;
+End:			return offset == 0 ? HTTP2Error_Huffman_UnexpectedEOS :
+					     HTTP2Error_Huffman_InvalidCode;
 		#endif
 	}
 	else {

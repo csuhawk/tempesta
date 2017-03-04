@@ -26,23 +26,19 @@ buffer_from_tfwstr (HTTP2Input * __restrict p,
 	p->str = str;
 }
 
-/* Get the current pointer, total length of unparsed part */
-/* of the string ("n") and length of the current fragment ("m"): */
+/* Get pointer to and length of the current fragment ("m"): */
 
 const uchar *
 buffer_get (HTTP2Input * __restrict p,
-	    uwide      * __restrict n,
 	    uwide      * __restrict m)
 {
 	const uwide offset = p->offset;
-	const uwide length = p->n;
 	const TfwStr * __restrict fp = p->str;
-	* n = length;
 	if (TFW_STR_PLAIN(fp)) {
 		#if Debug_Buffers
 			puts("Plain string...");
 		#endif
-		* m = length;
+		* m = p->n;
 	}
 	else {
 		uwide tail;
